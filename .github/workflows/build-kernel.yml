@@ -297,19 +297,29 @@ jobs:
               done
         done || true
 
-        # 5b. Auto-header: crea placeholder per include linux/*.h mancanti
-        { find . -type f \( -name "*.[chS]" -o -name "*.cpp" \) || true; } | while read -r file; do
-          { grep -E '^[[:space:]]*#include[[:space:]]*<linux/[^>]+>' "$file" || true; } \
-            | sed -E 's/^[[:space:]]*#include[[:space:]]*<([^>]+)>.*/\1/' \
-            | while read -r hdr; do
-                [ -z "$hdr" ] && continue
-                target="include/$hdr"
-                if [ ! -f "$target" ]; then
-                  mkdir -p "$(dirname "$target")" || true
-                  touch "$target" || true
-                fi
-              done
-        done || true
+        # 5b. Cleanup placeholder errati creati in run precedenti (header critici)
+        for crit in "types.h" "stdarg.h" "compiler.h" "posix_types.h" "kernel.h"; do
+          if [ -f "include/linux/$crit" ] && [ ! -s "include/linux/$crit" ]; then
+            rm -f "include/linux/$crit" || true
+          fi
+          if [ -f "arch/arm64/include/linux/$crit" ] && [ ! -s "arch/arm64/include/linux/$crit" ]; then
+            rm -f "arch/arm64/include/linux/$crit" || true
+          fi
+        done
+
+        # 5c. Auto-header sicuro: crea placeholder solo se header assente ovunque
+        grep -rE "#include <linux/[a-zA-Z0-9_/]+\\.h>" . --exclude-dir=out || true \
+          | grep -oE "linux/[a-zA-Z0-9_/]+\\.h" || true \
+          | sort -u | while read -r header; do
+              [ -z "$header" ] && continue
+              case "$header" in
+                *types.h*|*stdarg.h*|*compiler.h*|*posix_types.h*|*kernel.h*) continue ;;
+              esac
+              if [ ! -f "include/$header" ] && [ ! -f "arch/arm64/include/$header" ]; then
+                mkdir -p "include/$(dirname "$header")" || true
+                touch "include/$header" || true
+              fi
+            done
 
         # 6. Patch WERROR e cleanup rootguard
         sed -i 's/-Werror//g' Makefile || true
