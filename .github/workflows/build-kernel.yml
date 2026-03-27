@@ -206,12 +206,13 @@ jobs:
     - name: Fix Missing Kconfigs
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        # -p prevents error if dir exists
-        mkdir -p kernel/sched_assist
-        # Create the file only if it doesn't exist
+        # Force create directory and dummy Kconfig, ignore errors if exist
+        mkdir -p kernel/sched_assist || true
         touch kernel/sched_assist/Kconfig
-        # Remove the problematic line from init/Kconfig if it exists
-        sed -i '/kernel\/sched_assist\/Kconfig/d' init/Kconfig || true
+        # Nuclear option: remove any line pointing to the missing Kconfig in the whole source tree
+        find . -name "Kconfig" -type f -exec sed -i '/kernel\/sched_assist\/Kconfig/d' {} + || true
+        # Bypass Oplus specific environmental checks
+        echo "export OPLUS_FEATURE_SCHED_ASSIST=yes" >> $GITHUB_ENV
 
     - name: Download source boot image
       if: env.BUILD_BOOT_IMG == 'true'
@@ -275,15 +276,23 @@ jobs:
         export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/bin:$PATH
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
+        
+        # Additional cleanup to ensure Kconfig doesn't break during 'make'
+        make O=out ARCH=${{ env.ARCH }} mrproper || true
+        
         if [ ! -z ${{ env.KSU_EXPECTED_SIZE }} ] && [ ! -z ${{ env.KSU_EXPECTED_HASH }} ]; then
           export KSU_EXPECTED_SIZE=${{ env.KSU_EXPECTED_SIZE }}
           export KSU_EXPECTED_HASH=${{ env.KSU_EXPECTED_HASH }}
         fi
-        make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_CONFIG }}
+        
+        # Configuration step
+        make -j$(nproc --all) O=out ARCH=${{ env.ARCH }} CC=clang ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_CONFIG }}
+        
+        # Compilation step
         if [ ${{ env.ENABLE_CCACHE }} = true ]; then
-            make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
+            make -j$(nproc --all) O=out ARCH=${{ env.ARCH }} CC="ccache clang" ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
         else
-            make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
+            make -j$(nproc --all) O=out ARCH=${{ env.ARCH }} CC=clang ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
         fi
 
     - name: Check a kernel output files
