@@ -203,6 +203,13 @@ jobs:
           echo "LOCALVERSION=" >> $GITHUB_ENV
         fi
 
+    - name: Fix Missing Kconfigs
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        mkdir -p kernel/sched_assist
+        touch kernel/sched_assist/Kconfig
+        sed -i '/kernel\/sched_assist\/Kconfig/d' init/Kconfig
+
     - name: Download source boot image
       if: env.BUILD_BOOT_IMG == 'true'
       run: |
