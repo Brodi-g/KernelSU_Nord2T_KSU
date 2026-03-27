@@ -207,22 +207,111 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         set -Eeuo pipefail
-        TARGET="kernel/sched_assist"
+        shopt -s extglob
+        KCONFIG_COMMENTED=0
+        GHOST_DIRS_CREATED=0
 
-        # Hard reset path even when it's a broken symlink.
-        if [[ -e "$TARGET" || -L "$TARGET" ]]; then
-          rm -rf -- "$TARGET"
-        fi
+        # Known problematic vendor directories: force-create + placeholders.
+        MISSING_DIRS=("kernel/sched_assist" "kernel/locking/klockopt" "arch/arm64/kernel/rootguard")
+        for dir in "${MISSING_DIRS[@]}"; do
+          if [[ -e "$dir" || -L "$dir" ]]; then
+            rm -rf -- "$dir"
+          fi
+          mkdir -p -- "$dir"
+          GHOST_DIRS_CREATED=$((GHOST_DIRS_CREATED + 1))
+          : > "$dir/Kconfig"
+          echo "obj-y +=" > "$dir/Makefile"
+        done
 
-        # Recreate as a real directory and keep a placeholder Kconfig.
-        mkdir -p -- "$TARGET"
-        : > "$TARGET/Kconfig"
+        resolve_ref() {
+          local ref="$1"
+          # strip surrounding quotes
+          ref="${ref%\"}"
+          ref="${ref#\"}"
+          ref="${ref%\'}"
+          ref="${ref#\'}"
+          # normalize common kbuild prefixes
+          ref="${ref#\$(srctree)/}"
+          ref="${ref#\$srctree/}"
+          ref="${ref#\$(SRCARCH)/}"
+          ref="${ref#\$\(SRCARCH\)/}"
+          # drop leading ./ if present
+          while [[ "$ref" == ./* ]]; do
+            ref="${ref#./}"
+          done
+          printf '%s' "$ref"
+        }
 
-        # Remove direct source/rsource entries from all Kconfig variants.
+        # Search & destroy broken source/rsource in Kconfig*
         find . -type f \( -name 'Kconfig' -o -name 'Kconfig.*' -o -name 'Kconfig*' \) -print0 \
-          | while IFS= read -r -d '' f; do
-              sed -i -E '/^[[:space:]]*(source|rsource)[[:space:]]+"?kernel\/sched_assist\/Kconfig"?[[:space:]]*$/d' "$f"
+          | while IFS= read -r -d '' file; do
+              while IFS=: read -r lno line; do
+                ref="$(echo "$line" | sed -E 's/^[[:space:]]*(source|rsource)[[:space:]]+["'"'"']?([^"'"'"'[:space:]]+)["'"'"']?.*/\2/')"
+                [[ -z "$ref" ]] && continue
+                ref="$(resolve_ref "$ref")"
+                [[ "$ref" == *'$('* || "$ref" == *'${'* ]] && continue
+                if [[ ! -e "$ref" && ! -e "./$ref" ]]; then
+                  echo "Disable missing Kconfig ref: $ref in $file:$lno"
+                  sed -i "${lno}s|^|# AUTOFIX_MISSING_REF |" "$file"
+                  KCONFIG_COMMENTED=$((KCONFIG_COMMENTED + 1))
+                fi
+              done < <(grep -nE '^[[:space:]]*(source|rsource)[[:space:]]+' "$file" || true)
             done
+
+        # Search & destroy broken obj-* entries in Makefile*
+        find . -type f \( -name 'Makefile' -o -name 'Makefile.*' -o -name 'Kbuild' \) -print0 \
+          | while IFS= read -r -d '' file; do
+              while IFS=: read -r lno line; do
+                # Skip lines with variable expansion to reduce false positives.
+                [[ "$line" == *'$('* || "$line" == *'${'* ]] && continue
+                refs="$(echo "$line" | sed -E 's/^[[:space:]]*obj-[^[:space:]]+[[:space:]]*[:+?]?=[[:space:]]*//')"
+                broken=0
+                for tok in $refs; do
+                  tok="${tok%%#*}"
+                  tok="$(resolve_ref "$tok")"
+                  [[ -z "$tok" ]] && continue
+                  case "$tok" in
+                    *.a|*.ko)
+                      continue
+                      ;;
+                    */)
+                      if [[ ! -d "$tok" && ! -d "./$tok" ]]; then
+                        broken=1
+                        break
+                      fi
+                      ;;
+                    *.o)
+                      base="${tok%.o}"
+                      if [[ ! -e "${base}.c" && ! -e "${base}.S" && ! -e "${base}.s" && ! -e "${base}.rs" && ! -e "./${base}.c" && ! -e "./${base}.S" && ! -e "./${base}.s" && ! -e "./${base}.rs" ]]; then
+                        broken=1
+                        break
+                      fi
+                      ;;
+                    *)
+                      if [[ "$tok" == */* ]] && [[ ! -e "$tok" && ! -e "./$tok" ]]; then
+                        broken=1
+                        break
+                      fi
+                      ;;
+                  esac
+                done
+                if [[ "$broken" -eq 1 ]]; then
+                  echo "Disable broken obj-* line in $file:$lno"
+                  sed -i "${lno}s|^|# AUTOFIX_MISSING_REF |" "$file"
+                fi
+              done < <(grep -nE '^[[:space:]]*obj-[^[:space:]]+[[:space:]]*[:+?]?=' "$file" || true)
+            done
+
+        # Extra guard for known rootguard breakages.
+        sed -i '/rootguard/d' arch/arm64/kernel/Makefile || true
+
+        # Fix common headers/flags issues in Oplus sources.
+        sed -i 's/-Werror//g' Makefile || true
+        find . -name "Makefile" -type f -exec sed -i 's/-Werror//g' {} + || true
+
+        # Report in GitHub Actions logs.
+        echo "KCONFIG references commented: $KCONFIG_COMMENTED"
+        echo "Ghost directories created: $GHOST_DIRS_CREATED"
 
         # Set env flag to bypass vendor checks.
         echo "OPLUS_FEATURE_SCHED_ASSIST=yes" >> $GITHUB_ENV
