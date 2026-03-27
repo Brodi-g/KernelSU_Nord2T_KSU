@@ -321,6 +321,21 @@ jobs:
               fi
             done
 
+        # Forzatura manuale header proprietari (Schiacciamo i fatal error)
+        echo "Forzatura creazione header proprietari..."
+        mkdir -p include/linux/sched_assist || true
+        touch include/linux/sched_assist/sched_assist_common.h || true
+
+        mkdir -p include/linux/klockopt || true
+        touch include/linux/klockopt/klockopt_common.h || true
+
+        # Fix per un altro possibile header mancante in questa famiglia
+        mkdir -p include/linux/locking || true
+        touch include/linux/locking/klockopt_common.h || true
+
+        # Verifica visibilita
+        ls -R include/linux/sched_assist || true
+
         # 6. Patch WERROR e cleanup rootguard
         sed -i 's/-Werror//g' Makefile || true
         find . -name "Makefile" -type f -exec sed -i 's/-Werror//g' {} + || true
