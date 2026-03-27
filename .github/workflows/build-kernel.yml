@@ -206,11 +206,13 @@ jobs:
     - name: Fix Missing Kconfigs
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        # 1. Pulizia CRLF (Sempre necessaria per evitare errori di sintassi invisibili)
+        set -euo pipefail
+
+        # 1. Pulizia CRLF (sempre necessaria per evitare errori di sintassi invisibili)
         find . -type f \( -name "Kconfig*" -o -name "Makefile" -o -name "*.mk" \) -exec sed -i 's/\r//g' {} +
 
-        # 2. Creazione Directory e file placeholder (Aggiunta uxio_first)
-        MISSING_DIRS=(
+        # 2. Brute force su directory critiche: rimuovi qualsiasi file/dir/symlink e ricrea
+        CRITICAL_DIRS=(
           "kernel/sched_assist"
           "kernel/locking/klockopt"
           "arch/arm64/kernel/rootguard"
@@ -219,7 +221,8 @@ jobs:
           "block/uxio_first"
         )
 
-        for dir in "${MISSING_DIRS[@]}"; do
+        for dir in "${CRITICAL_DIRS[@]}"; do
+            rm -rf "$dir"
             mkdir -p "$dir"
             echo "# Empty placeholder" > "$dir/Kconfig"
             echo "obj-y +=" > "$dir/Makefile"
