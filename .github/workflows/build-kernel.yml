@@ -95,9 +95,16 @@ jobs:
       if: env.USE_CUSTOM_CLANG != 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
-        mkdir clang-aosp
-        wget https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/${{ env.CLANG_BRANCH }}/clang-${{ env.CLANG_VERSION }}.tar.gz
-        tar -C clang-aosp/ -zxvf clang-${{ env.CLANG_VERSION }}.tar.gz
+        git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
+          -b ${{ env.CLANG_BRANCH }} \
+          --depth=1 \
+          clang-prebuilts
+        mv clang-prebuilts/${{ env.CLANG_VERSION }} clang-aosp
+        if [ ! -d "clang-aosp/bin" ]; then
+          echo "ERROR: Clang version ${{ env.CLANG_VERSION }} not found in branch ${{ env.CLANG_BRANCH }}"
+          exit 1
+        fi
+        rm -rf clang-prebuilts
 
     - name: Download Custom-Clang
       if: env.USE_CUSTOM_CLANG == 'true'
