@@ -206,9 +206,12 @@ jobs:
     - name: Fix Missing Kconfigs
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        # -p prevents error if dir exists
         mkdir -p kernel/sched_assist
+        # Create the file only if it doesn't exist
         touch kernel/sched_assist/Kconfig
-        sed -i '/kernel\/sched_assist\/Kconfig/d' init/Kconfig
+        # Remove the problematic line from init/Kconfig if it exists
+        sed -i '/kernel\/sched_assist\/Kconfig/d' init/Kconfig || true
 
     - name: Download source boot image
       if: env.BUILD_BOOT_IMG == 'true'
