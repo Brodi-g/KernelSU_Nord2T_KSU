@@ -99,7 +99,14 @@ jobs:
           -b ${{ env.CLANG_BRANCH }} \
           --depth=1 \
           clang-prebuilts
-        mv clang-prebuilts/${{ env.CLANG_VERSION }} clang-aosp
+        CLANG_DIR=$(find clang-prebuilts -maxdepth 1 -type d -name "*${{ env.CLANG_VERSION }}*" | head -n 1)
+        if [ -n "$CLANG_DIR" ]; then
+          mv "$CLANG_DIR" clang-aosp
+        else
+          echo "ERRORE: Versione ${{ env.CLANG_VERSION }} non trovata. Contenuto di clang-prebuilts:"
+          ls clang-prebuilts
+          exit 1
+        fi
         if [ ! -d "clang-aosp/bin" ]; then
           echo "ERROR: Clang version ${{ env.CLANG_VERSION }} not found in branch ${{ env.CLANG_BRANCH }}"
           exit 1
