@@ -206,54 +206,15 @@ jobs:
     - name: Fix Missing Kconfigs
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        
-        # 1. Pulizia CRLF
-        find . -type f \( -name "Kconfig*" -o -name "Makefile" -o -name "*.mk" \) -exec sed -i 's/\r//g' {} +
-        
-        # 2. Creazione Directory e file "Ancora"
-        ANCHOR_KCONFIG="$GITHUB_WORKSPACE/kernel_workspace/android-kernel/kernel/sched_assist/Kconfig"
-        MISSING_DIRS=("kernel/sched_assist" "kernel/locking/klockopt" "arch/arm64/kernel/rootguard" "drivers/nfc/st21nfc-i2c" "block/blk")
-        for dir in "${MISSING_DIRS[@]}"; do
-            mkdir -p "$dir"
-            echo "# Empty" > "$dir/Kconfig"
-            echo "obj-y +=" > "$dir/Makefile"
-        done
-        
-        # 3. Safe Swap Kconfig: sostituisci i source inesistenti con il nostro Kconfig vuoto
-        find . -name "Kconfig*" -type f | while read -r file; do
-            # Estraiamo i percorsi dei source
-            grep -E "source|rsource" "$file" | grep -o '"[^"]*"' | tr -d '"' | while read -r path; do
-                if [ ! -e "$path" ]; then
-                    echo "Swapping missing $path with anchor in $file"
-                    # Sostituzione sicura usando un delimitatore diverso per sed
-                    sed -i "s|\"$path\"|\"kernel/sched_assist/Kconfig\"|g" "$file"
-                fi
-            done
-        done
-        
-        # 4. Makefile Fix: se obj-* punta a directory senza Makefile, crealo
-        find . -type f \( -name "Makefile" -o -name "Makefile.*" -o -name "Kbuild" \) | while read -r file; do
-            sed -nE 's/^[[:space:]]*obj-[^[:space:]]+[[:space:]]*[:+?]?=[[:space:]]*(.*)$/\1/p' "$file" \
-              | tr ' ' '\n' \
-              | sed 's/[[:space:]]*#.*$//' \
-              | while read -r tok; do
-                    [ -z "$tok" ] && continue
-                    case "$tok" in
-                        */)
-                            dir_path="$tok"
-                            if [ ! -d "$dir_path" ] && [ -d "$(dirname "$file")/$dir_path" ]; then
-                                dir_path="$(dirname "$file")/$dir_path"
-                            fi
-                            if [ -d "$dir_path" ] && [ ! -f "$dir_path/Makefile" ]; then
-                                echo "Creating missing Makefile in $dir_path (referenced by $file)"
-                                echo "obj-y +=" > "$dir_path/Makefile"
-                            fi
-                            ;;
-                    esac
-                done
-        done
-        
-        # 5. Fix specifico per rootguard nel Makefile principale
+        # Rimuove forzatamente qualsiasi file o symlink corrotto
+        rm -rf kernel/sched_assist
+        # Ora mkdir funzionera sicuramente
+        mkdir -p kernel/sched_assist
+        # Crea il file placeholder
+        touch kernel/sched_assist/Kconfig
+        # Pulisce i riferimenti Kconfig e Makefile per evitare errori di sintassi
+        find . -name "Kconfig*" -type f -exec sed -i '/kernel\/sched_assist\/Kconfig/d' {} + || true
+        # Fix specifico per rootguard che abbiamo visto fallire prima
         sed -i '/rootguard/d' arch/arm64/kernel/Makefile || true
 
     - name: Download source boot image
