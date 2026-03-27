@@ -206,13 +206,16 @@ jobs:
     - name: Fix Missing Kconfigs
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        # Force create directory and dummy Kconfig, ignore errors if exist
-        mkdir -p kernel/sched_assist || true
-        touch kernel/sched_assist/Kconfig
-        # Nuclear option: remove any line pointing to the missing Kconfig in the whole source tree
+        # Remove whatever 'kernel/sched_assist' is (file, symlink or dir) to start fresh
+        rm -rf kernel/sched_assist
+        # Create it as a real directory
+        mkdir -p kernel/sched_assist
+        # Create the dummy Kconfig
+        echo "# Empty Kconfig for bypass" > kernel/sched_assist/Kconfig
+        # Nuclear search and destroy for any reference in the whole tree
         find . -name "Kconfig" -type f -exec sed -i '/kernel\/sched_assist\/Kconfig/d' {} + || true
-        # Bypass Oplus specific environmental checks
-        echo "export OPLUS_FEATURE_SCHED_ASSIST=yes" >> $GITHUB_ENV
+        # Set the environment variable to skip Oplus checks
+        echo "OPLUS_FEATURE_SCHED_ASSIST=yes" >> $GITHUB_ENV
 
     - name: Download source boot image
       if: env.BUILD_BOOT_IMG == 'true'
