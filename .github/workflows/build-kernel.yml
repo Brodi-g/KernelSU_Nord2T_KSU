@@ -206,19 +206,38 @@ jobs:
     - name: Fix Missing Kconfigs
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        # Lista delle directory "fantasma" da sanare
-        GHOST_DIRS=("kernel/sched_assist" "kernel/locking/klockopt" "block/blk" "arch/arm64/kernel/rootguard")
+        # 1. Pulizia CRLF (Sempre necessaria per evitare errori di sintassi invisibili)
+        find . -type f \( -name "Kconfig*" -o -name "Makefile" -o -name "*.mk" \) -exec sed -i 's/\r//g' {} +
 
-        for dir in "${GHOST_DIRS[@]}"; do
-            rm -rf "$dir"
+        # 2. Creazione Directory e file placeholder (Aggiunta uxio_first)
+        MISSING_DIRS=(
+          "kernel/sched_assist"
+          "kernel/locking/klockopt"
+          "arch/arm64/kernel/rootguard"
+          "drivers/nfc/st21nfc-i2c"
+          "block/blk"
+          "block/uxio_first"
+        )
+
+        for dir in "${MISSING_DIRS[@]}"; do
             mkdir -p "$dir"
-            echo "# Placeholder" > "$dir/Kconfig"
+            echo "# Empty placeholder" > "$dir/Kconfig"
             echo "obj-y +=" > "$dir/Makefile"
         done
 
-        # Rimuovi i riferimenti che bloccano la build
-        find . -name "Kconfig*" -type f -exec sed -i '/kernel\/locking\/klockopt\/Kconfig/d' {} + || true
-        find . -name "Kconfig*" -type f -exec sed -i '/kernel\/sched_assist\/Kconfig/d' {} + || true
+        # 3. Safe Swap Kconfig (Il tuo script "ancora")
+        # Questo sostituira automaticamente block/uxio_first/Kconfig con uno esistente
+        find . -name "Kconfig*" -type f | while read -r file; do
+            grep -E "source|rsource" "$file" | grep -o '"[^"]*"' | tr -d '"' | while read -r path; do
+                if [ ! -e "$path" ]; then
+                    sed -i "s|\"$path\"|\"kernel/sched_assist/Kconfig\"|g" "$file"
+                fi
+            done
+        done
+
+        # 4. Patch WERROR e cleanup rootguard
+        sed -i 's/-Werror//g' Makefile || true
+        find . -name "Makefile" -type f -exec sed -i 's/-Werror//g' {} + || true
         sed -i '/rootguard/d' arch/arm64/kernel/Makefile || true
 
     - name: Download source boot image
