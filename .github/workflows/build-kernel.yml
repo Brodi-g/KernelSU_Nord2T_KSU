@@ -206,15 +206,19 @@ jobs:
     - name: Fix Missing Kconfigs
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        # Rimuove forzatamente qualsiasi file o symlink corrotto
-        rm -rf kernel/sched_assist
-        # Ora mkdir funzionera sicuramente
-        mkdir -p kernel/sched_assist
-        # Crea il file placeholder
-        touch kernel/sched_assist/Kconfig
-        # Pulisce i riferimenti Kconfig e Makefile per evitare errori di sintassi
+        # Lista delle directory "fantasma" da sanare
+        GHOST_DIRS=("kernel/sched_assist" "kernel/locking/klockopt" "block/blk" "arch/arm64/kernel/rootguard")
+
+        for dir in "${GHOST_DIRS[@]}"; do
+            rm -rf "$dir"
+            mkdir -p "$dir"
+            echo "# Placeholder" > "$dir/Kconfig"
+            echo "obj-y +=" > "$dir/Makefile"
+        done
+
+        # Rimuovi i riferimenti che bloccano la build
+        find . -name "Kconfig*" -type f -exec sed -i '/kernel\/locking\/klockopt\/Kconfig/d' {} + || true
         find . -name "Kconfig*" -type f -exec sed -i '/kernel\/sched_assist\/Kconfig/d' {} + || true
-        # Fix specifico per rootguard che abbiamo visto fallire prima
         sed -i '/rootguard/d' arch/arm64/kernel/Makefile || true
 
     - name: Download source boot image
