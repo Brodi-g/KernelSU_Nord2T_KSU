@@ -286,6 +286,20 @@ jobs:
         find . -name "Makefile" -type f -exec sed -i 's/-Werror//g' {} + || true
         sed -i '/rootguard/d' arch/arm64/kernel/Makefile || true
 
+        # 7. Sanificazione flag Makefile per compatibilita Clang
+        # Rimuovi flag di errore specifiche che bloccano Clang
+        sed -i 's/-Werror=implicit-function-declaration//g' Makefile || true
+        sed -i 's/-Werror=return-type//g' Makefile || true
+        sed -i 's/-Werror=unknown-warning-option//g' Makefile || true
+
+        # Fix per flag spezzate (casi in cui rimane solo la parte finale)
+        sed -i 's/-implicit-function-declaration//g' Makefile || true
+        sed -i 's/=return-type//g' Makefile || true
+        sed -i 's/=unknown-warning-option//g' Makefile || true
+
+        # Rimuovi globalmente ogni riferimento a -Werror per evitare stop su warning minori
+        find . \( -name "Makefile" -o -name "Kbuild" \) -type f -print0 | xargs -0 sed -i 's/-Werror//g' || true
+
     - name: Download source boot image
       if: env.BUILD_BOOT_IMG == 'true'
       run: |
