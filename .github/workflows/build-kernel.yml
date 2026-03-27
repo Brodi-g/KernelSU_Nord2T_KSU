@@ -221,6 +221,7 @@ jobs:
           "block/uxio_first"
           "drivers/base/kernelFwUpdate"
           "fs/proc/healthinfo"
+          "kernel/keventupload"
         )
 
         for dir in "${MISSING_DIRS[@]}"; do
@@ -232,6 +233,15 @@ jobs:
 
         # Da qui in poi: no hard-fail su search/cleanup
         set +e
+
+        # 2b. Fix preventivo: crea Makefile placeholder mancanti sotto drivers/oplus
+        if [ -d "drivers/oplus" ]; then
+          find drivers/oplus -type d | while read -r d; do
+            if [ ! -f "$d/Makefile" ]; then
+              echo "obj-y +=" > "$d/Makefile" || true
+            fi
+          done || true
+        fi
 
         # 3. Auto-riparazione Kconfig: crea placeholder mancanti da source/rsource
         { find . -name "Kconfig*" -type f || true; } | while read -r file; do
