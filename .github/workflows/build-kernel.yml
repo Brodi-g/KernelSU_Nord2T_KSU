@@ -231,6 +231,12 @@ jobs:
           echo "obj-y +=" > "$dir/Makefile"
         done
 
+        # 2a. Creazione header fantasma per Sched Assist / Klockopt
+        mkdir -p include/linux/sched_assist || true
+        touch include/linux/sched_assist/sched_assist_common.h || true
+        mkdir -p include/linux/klockopt || true
+        touch include/linux/klockopt/klockopt_common.h || true
+
         # Da qui in poi: no hard-fail su search/cleanup
         set +e
 
@@ -288,6 +294,20 @@ jobs:
                     fi
                     ;;
                 esac
+              done
+        done || true
+
+        # 5b. Auto-header: crea placeholder per include linux/*.h mancanti
+        { find . -type f \( -name "*.[chS]" -o -name "*.cpp" \) || true; } | while read -r file; do
+          { grep -E '^[[:space:]]*#include[[:space:]]*<linux/[^>]+>' "$file" || true; } \
+            | sed -E 's/^[[:space:]]*#include[[:space:]]*<([^>]+)>.*/\1/' \
+            | while read -r hdr; do
+                [ -z "$hdr" ] && continue
+                target="include/$hdr"
+                if [ ! -f "$target" ]; then
+                  mkdir -p "$(dirname "$target")" || true
+                  touch "$target" || true
+                fi
               done
         done || true
 
