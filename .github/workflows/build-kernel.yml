@@ -219,6 +219,8 @@ jobs:
           "drivers/nfc/st21nfc-i2c"
           "block/blk"
           "block/uxio_first"
+          "drivers/base/kernelFwUpdate"
+          "fs/proc/healthinfo"
         )
 
         for dir in "${MISSING_DIRS[@]}"; do
@@ -231,18 +233,55 @@ jobs:
         # Da qui in poi: no hard-fail su search/cleanup
         set +e
 
-        # 3. Safe Swap Kconfig: sostituisce source/rsource mancanti con anchor valido
+        # 3. Auto-riparazione Kconfig: crea placeholder mancanti da source/rsource
         { find . -name "Kconfig*" -type f || true; } | while read -r file; do
-          { grep -E "source|rsource" "$file" || true; } \
+          { grep -E '^[[:space:]]*(source|rsource)[[:space:]]+' "$file" || true; } \
             | { grep -o '"[^"]*"' || true; } \
             | tr -d '"' | while read -r path; do
+                [ -z "$path" ] && continue
+                if [ ! -e "$path" ]; then
+                  mkdir -p "$(dirname "$path")" || true
+                  echo "# Auto generated placeholder" > "$path" || true
+                fi
+              done
+        done || true
+
+        # 4. Safe Swap Kconfig: sostituisce source/rsource mancanti con anchor valido
+        { find . -name "Kconfig*" -type f || true; } | while read -r file; do
+          { grep -E '^[[:space:]]*(source|rsource)[[:space:]]+' "$file" || true; } \
+            | { grep -o '"[^"]*"' || true; } \
+            | tr -d '"' | while read -r path; do
+                [ -z "$path" ] && continue
                 if [ ! -e "$path" ]; then
                   sed -i "s|\"$path\"|\"kernel/sched_assist/Kconfig\"|g" "$file" || true
                 fi
               done
         done || true
 
-        # 4. Patch WERROR e cleanup rootguard
+        # 5. Auto-Makefile: crea Makefile se obj-* punta a directory senza Makefile
+        { find . -type f \( -name "Makefile" -o -name "Makefile.*" -o -name "Kbuild" \) || true; } | while read -r file; do
+          { grep -E '^[[:space:]]*obj-[^[:space:]]+[[:space:]]*[:+?]?=' "$file" || true; } \
+            | sed -E 's/^[[:space:]]*obj-[^[:space:]]+[[:space:]]*[:+?]?=[[:space:]]*//' \
+            | tr ' ' '\n' \
+            | sed 's/[[:space:]]*#.*$//' \
+            | while read -r tok; do
+                [ -z "$tok" ] && continue
+                case "$tok" in
+                  */)
+                    dir_path="$tok"
+                    if [ ! -d "$dir_path" ] && [ -d "$(dirname "$file")/$dir_path" ]; then
+                      dir_path="$(dirname "$file")/$dir_path"
+                    fi
+                    mkdir -p "$dir_path" || true
+                    if [ ! -f "$dir_path/Makefile" ]; then
+                      echo "obj-y +=" > "$dir_path/Makefile" || true
+                    fi
+                    ;;
+                esac
+              done
+        done || true
+
+        # 6. Patch WERROR e cleanup rootguard
         sed -i 's/-Werror//g' Makefile || true
         find . -name "Makefile" -type f -exec sed -i 's/-Werror//g' {} + || true
         sed -i '/rootguard/d' arch/arm64/kernel/Makefile || true
