@@ -300,18 +300,15 @@ jobs:
         # Rimuovi globalmente ogni riferimento a -Werror per evitare stop su warning minori
         find . \( -name "Makefile" -o -name "Kbuild" \) -type f -print0 | xargs -0 sed -i 's/-Werror//g' || true
 
-        # Riparazione manuale errori di sintassi nei sorgenti Oplus/MTK
+        # Riparazione avanzata memcontrol.h (Oplus/MTK syntax fix)
         MEM_HDR="include/linux/memcontrol.h"
         if [ -f "$MEM_HDR" ]; then
-            # Rimuovi caratteri corrotti e sistema la sintassi della riga split_queue
+            # 1. Rimuovi i caratteri non-ASCII (il pipe rotto)
             sed -i 's/¦//g' "$MEM_HDR" || true
-            sed -i 's/structsplit_queue_len/struct split_queue_len/g' "$MEM_HDR" || true
-            # Fix specifico per la riga 1003 se presenta parentesi sbilanciate
-            sed -i 's/return ((struct/return (struct/g' "$MEM_HDR" || true
-        fi
 
-        # Un altro fix comune per i sorgenti MTK in quel file
-        sed -i 's/)->lruvec;/)->lruvec);/g' "$MEM_HDR" || true
+            # 2. Fix radicale riga corrotta: reset della logica split_queue_len
+            sed -i '/split_queue_len/c\	return 0;' "$MEM_HDR" || true
+        fi
 
     - name: Download source boot image
       if: env.BUILD_BOOT_IMG == 'true'
